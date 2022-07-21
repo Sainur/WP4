@@ -1,0 +1,188 @@
+#dir: cd /home/samad/Data/WP4/ITS/
+
+#Read reorientation
+pip install regex
+???pip install gzip
+#ITS1 forward primer: CTTGGTCATTTAGAGGAAGTAA, ITS2 (rev.): GCTGCGTTCTTCATCGATGC
+SS02_R1_clipped.fastq.bz2
+
+#convert file .bz2 to .gz
+#convert file .bz2 to .gz
+bzip2 -dk P01-B01-SA2-ITS1_R2.fastq.bz2
+bzip2 -dk P01-B01-SA2-ITS1_R1.fastq.bz2
+
+gzip P01-B01-SA2-ITS1_R2.fastq 
+gzip P01-B01-SA2-ITS1_R1.fastq
+
+
+
+
+
+python reorient_reads.py -f P01-B01-SA2-ITS1_R1.fastq.gz -r P01-B01-SA2-ITS1_R2.fastq.gz -fp CTTGGTCATTTAGAGGAAGTAA -rp GCTGCGTTCTTCATCGATGC -o
+
+#Make new folder and copy sequences
+mkdir sequences
+cp -r forward.fastq.gz ./sequences
+cp -r reverse.fastq.gz ./sequences
+
+
+source activate qiime2-2022.2
+
+#Qiime2 ‘Artifacts’ and ‘Visualisations’
+qiime tools import \
+--type MultiplexedPairedEndBarcodeInSequence \
+--input-path sequences/ \
+--output-path my-seqs.qza
+
+#Demultiplexing
+qiime cutadapt demux-paired \
+--i-seqs my-seqs.qza \
+--m-forward-barcodes-file qiim2_mapping_wp4_ITS.tsv \
+--m-forward-barcodes-column barcode-sequence \
+--o-per-sample-sequences my-sorted-seqs.qza \
+--o-untrimmed-sequences unmatched-seqs.qza \
+--verbose
+
+#Total read pairs processed:         10,486,133
+
+Total read pairs processed:         10,486,133
+  Read 1 with adapter:              10,439,802 (99.6%)
+  Read 2 with adapter:                       0 (0.0%)
+Pairs that were too short:               2,476 (0.0%)
+Pairs written (passing filters):    10,483,657 (100.0%)
+
+Total basepairs processed: 5,902,796,828 bp
+  Read 1: 2,951,748,476 bp
+  Read 2: 2,951,048,352 bp
+Total written (filtered):  5,630,129,774 bp (95.4%)
+  Read 1: 2,679,779,870 bp
+  Read 2: 2,950,349,904 bp
+
+
+
+
+qiime demux summarize \
+--i-data my-sorted-seqs.qza \
+--o-visualization my-sorted-seqs-viz.qzv
+
+
+#Merging
+qiime vsearch join-pairs \
+--i-demultiplexed-seqs my-sorted-seqs.qza \
+--o-joined-sequences my-merged-seqs.qza \
+--p-threads 8
+
+
+
+qiime demux summarize \
+--i-data my-merged-seqs.qza \
+--o-visualization my-merged-seqs-viz.qzv
+
+#Note that the quality for the majority of the sequences (between nucleotides 40 to 280) 
+
+mkdir exported
+qiime tools export \
+--input-path my-merged-seqs.qza \
+--output-path ./exported
+
+
+rm exported/MANIFEST
+rm exported/metadata.yml
+
+
+qiime tools import \
+--type SampleData[SequencesWithQuality] \
+--input-format CasavaOneEightSingleLanePerSampleDirFmt \
+--input-path ./exported \
+--output-path mergedseqs-goodfmt.qza
+
+
+qiime dada2 denoise-single \
+--i-demultiplexed-seqs mergedseqs-goodfmt.qza \
+--p-trunc-len 280 \
+--p-trim-left 40 \
+--o-table dada2-table-280-40.qza \
+--o-representative-sequences dada2-seqs-280-40.qza \
+--o-denoising-stats dada2-stats-280-40.qza \
+--p-n-threads 16
+
+
+
+qiime metadata tabulate \
+--m-input-file dada2-stats-280-40.qza \
+--o-visualization dada2-stats-280-40.qzv 
+
+
+qiime feature-table summarize \
+--i-table dada2-table-280-40.qza \
+--o-visualization dada2-table-280-40.qzv \
+--m-sample-metadata-file qiim2_mapping_wp4_ITS.tsv
+
+qiime feature-table tabulate-seqs \
+--i-data dada2-seqs-280-40.qza \
+--o-visualization dada2-seqs-280-40.qzv
+
+##
+cd 
+#Download ITS data version: 8.2 (Release date: 2020-02-20)
+#http://john-quensen.com/tutorials/training-the-qiime2-classifier-with-unite-its-reference-sequences/
+
+cd /home/samad/database/ITS_Unite8.2
+
+wget https://files.plutof.ut.ee/public/orig/01/38/0138B5D5EA2C77B8C2E5B910202FD3E60A9244FC31084E08DAD63E213A03BBFB.gz
+tar xzf 0138B5D5EA2C77B8C2E5B910202FD3E60A9244FC31084E08DAD63E213A03BBFB.gz
+cd sh_qiime_release_s_04.02.2020/developer/
+awk '/^>/ {print($0)}; /^[^>]/ {print(toupper($0))}' sh_refs_qiime_ver8_99_s_04.02.2020_dev.fasta | tr -d ' ' > sh_refs_qiime_ver8_99_s_04.02.2020_dev_uppercase.fasta
+
+
+#Import the UNITE reference sequences into QIIME2.
+qiime tools import \
+--type FeatureData[Sequence] \
+--input-path /home/samad/database/ITS_Unite8.2/sh_qiime_release_s_04.02.2020/developer/sh_refs_qiime_ver8_99_s_04.02.2020_dev_uppercase.fasta \
+--output-path unite-ver8-seqs_99_s_04.02.2020.qza
+
+#Import the taxonomy file.
+qiime tools import \
+--type FeatureData[Taxonomy] \
+--input-path /home/samad/database/ITS_Unite8.2/sh_qiime_release_s_04.02.2020/developer/sh_taxonomy_qiime_ver8_99_s_04.02.2020_dev.txt \
+--output-path unite-ver8-taxonomy_99_s_04.02.2020.qza \
+--input-format HeaderlessTSVTaxonomyFormat
+
+#Train the classifier.
+qiime feature-classifier fit-classifier-naive-bayes \
+--i-reference-reads unite-ver8-seqs_99_s_04.02.2020.qza \
+--i-reference-taxonomy unite-ver8-taxonomy_99_s_04.02.2020.qza \
+--o-classifier unite-ver8-99-s-classifier-04.02.2020.qza
+
+
+cd ../..
+
+
+
+qiime feature-classifier classify-sklearn \
+--i-classifier unite-ver8-99-s-classifier-04.02.2020.qza \
+--i-reads dada2-seqs-280-40.qza \
+--o-classification taxonomy_s.qza \
+--p-n-jobs 16
+
+
+qiime taxa barplot \
+--i-table dada2-table-280-40.qza \
+--i-taxonomy taxonomy_s.qza \
+--m-metadata-file qiim2_mapping_wp4_ITS.tsv \
+--o-visualization taxa-barplots-280-40.qzv
+
+
+#Generate a tree for phylogenetic diversity analyses
+
+qiime phylogeny align-to-tree-mafft-fasttree \
+--i-sequences dada2-seqs-280-40.qza \
+--o-alignment aligned-rep-seqs-280-40.qza \
+--o-masked-alignment masked-aligned-rep-seqs-280-40.qza \
+--o-tree unrooted-tree-280-40.qza \
+--o-rooted-tree rooted-tree-280-40.qza --p-n-threads 8
+
+
+  
+  
+  
