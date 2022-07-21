@@ -1,0 +1,171 @@
+#dir: cd /home/samad/Data/WP4/16S/
+conda update conda
+wget https://data.qiime2.org/distro/core/qiime2-2022.2-py38-linux-conda.yml
+conda env create -n qiime2-2022.2 --file qiime2-2022.2-py38-linux-conda.yml
+# OPTIONAL CLEANUP
+rm qiime2-2022.2-py38-linux-conda.yml
+#conda activate
+conda activate qiime2-2022.2
+
+#Test installation
+qiime --help
+
+#Read reorientation
+pip install regex
+???pip install gzip
+#ITS1 forward primer: CTTGGTCATTTAGAGGAAGTAA, ITS2 (rev.): GCTGCGTTCTTCATCGATGC
+SS02_R1_clipped.fastq.bz2
+
+#convert file .bz2 to .gz
+bzip2 -dk P01-A01-SA1-16s_R1.fastq.bz2
+bzip2 -dk P01-A01-SA1-16s_R2.fastq.bz2
+
+gzip P01-A01-SA1-16s_R1.fastq 
+gzip P01-A01-SA1-16s_R2.fastq 
+
+mv P01-A01-SA1-16s_R1.fastq.gz R1.fastq.gz
+mv P01-A01-SA1-16s_R2.fastq.gz R2.fastq.gz
+
+
+#read reorient
+python reorient_reads.py -f /home/samad/Data/WP4/16S/R1.fastq.gz -r /home/samad/Data/WP4/16S/R2.fastq.gz -fp GTGYCAGCMGCCGCGGTAA -rp GGACTACNVGGGTWTCTAAT -o
+#Make new folder and copy sequences
+mkdir sequences
+cp -r forward.fastq.gz ./sequences
+cp -r reverse.fastq.gz ./sequences
+
+# source activate qiime2-2022.2
+
+#Qiime2 ‘Artifacts’ and ‘Visualisations’
+qiime tools import \
+--type MultiplexedPairedEndBarcodeInSequence \
+--input-path sequences/ \
+--output-path my-seqs.qza
+
+#Demultiplexing
+qiime cutadapt demux-paired \
+--i-seqs my-seqs.qza \
+--m-forward-barcodes-file /home/samad/Data/WP4/16S/qiim2_mapping_wp4_16s.tsv \
+--m-forward-barcodes-column barcode-sequence \
+--o-per-sample-sequences my-sorted-seqs.qza \
+--o-untrimmed-sequences unmatched-seqs.qza \
+--verbose
+
+
+=== Summary ===
+
+Total read pairs processed:         13,359,956
+  Read 1 with adapter:              13,357,633 (100.0%)
+
+== Read fate breakdown ==
+Pairs that were too short:                 625 (0.0%)
+Pairs written (passing filters):    13,359,331 (100.0%)
+
+Total basepairs processed: 8,015,973,600 bp
+  Read 1: 4,007,986,800 bp
+  Read 2: 4,007,986,800 bp
+Total written (filtered):  7,831,854,077 bp (97.7%)
+  Read 1: 3,824,054,777 bp
+  Read 2: 4,007,799,300 bp
+
+qiime demux summarize \
+--i-data my-sorted-seqs.qza \
+--o-visualization my-sorted-seqs-viz.qzv
+
+
+#Merging
+qiime vsearch join-pairs \
+--i-demultiplexed-seqs my-sorted-seqs.qza \
+--o-joined-sequences my-merged-seqs.qza \
+--p-threads 8
+
+qiime demux summarize \
+--i-data my-merged-seqs.qza \
+--o-visualization my-merged-seqs-viz.qzv
+
+#Note that the quality for the majority of the sequences (between nucleotides 40 to 280) 
+
+
+mkdir exported
+qiime tools export \
+--input-path my-merged-seqs.qza \
+--output-path ./exported
+
+
+rm exported/MANIFEST
+rm exported/metadata.yml
+
+
+qiime tools import \
+--type SampleData[SequencesWithQuality] \
+--input-format CasavaOneEightSingleLanePerSampleDirFmt \
+--input-path ./exported \
+--output-path mergedseqs-goodfmt.qza
+
+
+qiime dada2 denoise-single \
+--i-demultiplexed-seqs mergedseqs-goodfmt.qza \
+--p-trunc-len 280 \
+--p-trim-left 25 \
+--o-table dada2-table-280-25.qza \
+--o-representative-sequences dada2-seqs-280-25.qza \
+--o-denoising-stats dada2-stats-280-25.qza \
+--p-n-threads 16
+
+
+
+qiime metadata tabulate \
+--m-input-file dada2-stats-280-25.qza \
+--o-visualization dada2-stats-280-25.qzv 
+
+qiime feature-table summarize \
+--i-table dada2-table-280-25.qza \
+--o-visualization dada2-table-280-25.qzv \
+--m-sample-metadata-file  /home/samad/Data/WP4/16S/qiim2_mapping_wp4_16s.tsv
+
+qiime feature-table tabulate-seqs \
+--i-data dada2-seqs-280-25.qza \
+--o-visualization dada2-seqs-280-25.qzv
+
+
+#Extract reads from reference
+#qiime feature-classifier extract-reads \
+#--i-sequences /home/samad/database/Silva-132/SILVA_132_QIIME_release/rep_set/rep_set_16S_only/99/Silva_99_otus.qza \
+#--p-f-primer GTGYCAGCMGCCGCGGTAA \
+#--p-r-primer GGACTACNVGGGTWTCTAAT \
+#--o-reads silva_132_99_ref-seqs.qza --p-n-jobs 8
+
+
+  
+ #Train the classifier.
+qiime feature-classifier fit-classifier-naive-bayes \
+--i-reference-reads /home/samad/database/Silva-138/silva-138-99-seqs-515-806.qza \
+--i-reference-taxonomy /home/samad/database/Silva-138/silva-138-99-tax-515-806.qza \
+--o-classifier SILVA_138_99_classifier-515-806.qza
+  
+  
+qiime feature-classifier classify-sklearn \
+--i-classifier SILVA_138_99_classifier-515-806.qza \
+--i-reads dada2-seqs-280-25.qza \
+--o-classification taxonomy.qza \
+--p-n-jobs 16
+
+
+qiime taxa barplot \
+--i-table dada2-table-280-25.qza \
+--i-taxonomy taxonomy.qza \
+--m-metadata-file /home/samad/Data/WP4/16S/qiim2_mapping_wp4_16s.tsv \
+--o-visualization taxa-barplots-280-25.qzv
+
+
+#Generate a tree for phylogenetic diversity analyses
+
+qiime phylogeny align-to-tree-mafft-fasttree \
+--i-sequences dada2-seqs-280-25.qza \
+--o-alignment aligned-rep-seqs-280-25.qza \
+--o-masked-alignment masked-aligned-rep-seqs-280-25.qza \
+--o-tree unrooted-tree-280-25.qza \
+--o-rooted-tree rooted-tree-280-25.qza --p-n-threads 10
+
+  
+ 
