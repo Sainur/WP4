@@ -1,2 +1,3 @@
-## Work package 4 
-# Achieved soil pre-incubation experiment
+This repository contains supporting information (ASV table, input files) and R scripts for data analysis.
+
+Citation:
