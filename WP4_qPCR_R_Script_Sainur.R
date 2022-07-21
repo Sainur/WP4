@@ -129,7 +129,7 @@ pp <- p+ scale_colour_manual(values = c("#0000FF", "#FF0000"))
 
 pp  
 
-
+#Print size (10x8)
   
   
 #Archeal
@@ -216,7 +216,7 @@ p=ggplot(data_new, aes(x=a_Day, y=A_no_gc_per_g_soil_log10, group=a_Temp)) +
   ylab ("Archeal abundance per of dry soil (log10)")+
   expand_limits(y=0) +
   #  scale_y_continuous()+
-#  scale_y_continuous(limits = c(0, 10))+
+  scale_y_continuous(limits = c(5, 9))+
   theme_bw()+
   theme(panel.grid = element_blank(), panel.grid.major = element_blank(), 
         strip.text.x = element_text(size = 8, angle =0))
